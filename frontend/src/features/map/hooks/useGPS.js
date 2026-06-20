@@ -1,49 +1,70 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import L from 'leaflet';
-import { ARRIVAL_RADIUS_METERS } from '../../../config/constants';
 
 export function useGPS(isNavigating, targetLocation, speak) {
   const [userLocation, setUserLocation] = useState(null);
   const [distanceRemaining, setDistanceRemaining] = useState(null);
   const [gpsStatus, setGpsStatus] = useState("Waiting for GPS...");
-  const [hasArrived, setHasArrived] = useState(false);
+
+  const targetRef = useRef(targetLocation);
+  const speakRef = useRef(speak);
+
+  useEffect(() => {
+    targetRef.current = targetLocation;
+    speakRef.current = speak;
+  }, [targetLocation, speak]);
 
   useEffect(() => {
     let watchId;
-    
-    if (isNavigating && targetLocation) {
-      setHasArrived(false); 
+
+    if (isNavigating) {
       setGpsStatus("Locating...");
-      
+      let hasAnnouncedArrival = false;
+
       if ("geolocation" in navigator) {
         watchId = navigator.geolocation.watchPosition(
           (position) => {
+            // 🐛 DEBUGGING: Print the accuracy to your browser console!
+            console.log("GPS Accuracy (meters):", position.coords.accuracy);
+
+            // 🛑 RELAXED DESKTOP FIX: Changed from 60 to 5000 for testing.
+            // When you deploy this to actual phones, you can change it back to 60.
+            if (position.coords.accuracy > 5000) {
+                setGpsStatus(`Weak Signal (${Math.round(position.coords.accuracy)}m)`);
+                return;
+            }
+
             const currentLeafletLoc = L.latLng(position.coords.latitude, position.coords.longitude);
-            setUserLocation(currentLeafletLoc); 
-            setGpsStatus("GPS Active");
-            
-            const dist = currentLeafletLoc.distanceTo(L.latLng(targetLocation.lat, targetLocation.lng)).toFixed(0);
-            setDistanceRemaining(dist);
-            
-            if (dist < ARRIVAL_RADIUS_METERS && !hasArrived) {
-              speak(`Arrived at ${targetLocation.id}.`); 
-              setHasArrived(true);
+            setUserLocation(currentLeafletLoc);
+            setGpsStatus("GPS Active"); 
+
+            if (targetRef.current) {
+              const dist = currentLeafletLoc.distanceTo(L.latLng(targetRef.current.lat, targetRef.current.lng)).toFixed(0);
+              setDistanceRemaining(dist);
+
+              if (dist < 15 && !hasAnnouncedArrival) {
+                hasAnnouncedArrival = true;
+                if (speakRef.current) speakRef.current("speechArrived");
+              }
             }
           },
-          (error) => setGpsStatus("GPS Error - Check Permissions"), 
+          (error) => {
+              console.error("GPS Error:", error);
+              setGpsStatus("GPS Error - Check Permissions");
+          },
           { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
         );
       }
-    } else { 
-        setUserLocation(null); 
-        setDistanceRemaining(null); 
-        setGpsStatus(""); 
+    } else {
+      setUserLocation(null);
+      setDistanceRemaining(null);
+      setGpsStatus("");
     }
-    
-    return () => { 
-        if (watchId) navigator.geolocation.clearWatch(watchId); 
-    };
-  }, [isNavigating, targetLocation, hasArrived, speak]);
 
-  return { userLocation, distanceRemaining, gpsStatus, hasArrived };
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+    };
+  }, [isNavigating]); 
+
+  return { userLocation, distanceRemaining, gpsStatus };
 }

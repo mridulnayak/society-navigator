@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { AppContext } from './context/AppContext'; // 🧠 IMPORT THE BRAIN
+import { AppContext } from './context/AppContext'; 
 import { T } from './utils/translations';
 
 // 🏗️ ENTERPRISE IMPORTS (Components)
+import BulkUploadModal from './features/admin/components/BulkUploadModal';
 import LoginModal from './features/auth/components/LoginModal';
 import AddPlotModal from './features/admin/components/AddPlotModal';
 import SearchDashboard from './features/visitor/components/SearchDashboard';
@@ -13,7 +14,7 @@ import { MAIN_GATE } from './config/constants';
 import { useGPS } from './features/map/hooks/useGPS';
 
 export default function App() {
-  // 🧠 GLOBAL STATE (Grabbed instantly from Context)
+  // 🧠 GLOBAL STATE
   const {
     plotDatabase, setPlotDatabase, isDbLoaded,
     targetLocation, setTargetLocation,
@@ -25,11 +26,12 @@ export default function App() {
     userPlotId, setUserPlotId
   } = useContext(AppContext);
 
-  // 🗄️ LOCAL UI STATE (Only affects this specific screen)
+  // 🗄️ LOCAL UI STATE
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
   
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -39,7 +41,7 @@ export default function App() {
   const [newPlotName, setNewPlotName] = useState('');
   const [editHouseName, setEditHouseName] = useState('');
 
-  // 🗣️ VOICE ASSISTANT (Using Context Language)
+  // 🗣️ VOICE ASSISTANT
   const speak = (textKey, variables = "") => {
     if (!voiceEnabled || !window.speechSynthesis) return;
     window.speechSynthesis.cancel(); 
@@ -188,11 +190,21 @@ export default function App() {
         />
       )}
 
+      {/* 📤 RENDER THE NEW BULK UPLOAD MODAL */}
+      {showBulkUpload && isLoggedIn && userRole === 'admin' && (
+        <BulkUploadModal 
+            setShowBulkUpload={setShowBulkUpload} 
+            setPlotDatabase={setPlotDatabase} 
+            plotDatabase={plotDatabase} 
+        />
+      )}
+
       <SearchDashboard 
           language={language} setLanguage={setLanguage}
           isDbLoaded={isDbLoaded} isLoggedIn={isLoggedIn} userRole={userRole} userPlotId={userPlotId}
           voiceEnabled={voiceEnabled} setVoiceEnabled={setVoiceEnabled}
-          handleLogout={handleLogout} setShowLoginModal={setShowLoginModal}
+          handleLogout={handleLogout} setShowLoginModal={setShowLoginModal} 
+          setShowBulkUpload={setShowBulkUpload} // 🌐 PASSED DOWN PROPS HERE
           handleUpdateHouseName={handleUpdateHouseName} editHouseName={editHouseName} setEditHouseName={setEditHouseName}
           searchQuery={searchQuery} handleInputChange={handleInputChange} targetLocation={targetLocation}
           isNavigating={isNavigating} setIsNavigating={setIsNavigating} setTargetLocation={setTargetLocation} setSearchQuery={setSearchQuery}

@@ -1,74 +1,127 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
 const jwt = require('jsonwebtoken');
+const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws'); 
 
 const app = express();
-const PORT = 5000;
-const SECRET_KEY = "DHEBAR_CITY_SUPER_SECRET_KEY";
+const PORT = process.env.PORT || 5000;
+const SECRET_KEY = process.env.SECRET_KEY;
 
-const ADMIN_CREDENTIALS = {
-    username: "admin",
-    password: "password123"
-};
+const supabase = createClient(
+    process.env.SUPABASE_URL, 
+    process.env.SUPABASE_SERVICE_KEY,
+    {
+        auth: { persistSession: false }, 
+        realtime: { transport: WebSocket } 
+    }
+);
 
+// Middleware
 app.use(cors()); 
 app.use(express.json()); 
 
-const plotsFilePath = path.join(__dirname, 'data', 'plots.json');
+// 👮‍♂️ MULTI-TIER USER DATABASE
+const USERS = [
+    { username: "admin", password: "password123", role: "admin" },
+    { username: "b1017", password: "res123", role: "resident", plotId: "B-10/17" }
+];
 
-// 🔒 SECURITY MIDDLEWARE: Checks if the user is a real Admin
+// 🔒 SECURITY MIDDLEWARE
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Format: "Bearer <token>"
-
-    if (!token) return res.status(401).json({ error: "Access Denied. No token provided." });
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: "Access Denied." });
 
     jwt.verify(token, SECRET_KEY, (err, user) => {
-        if (err) return res.status(403).json({ error: "Invalid or expired token." });
+        if (err) return res.status(403).json({ error: "Invalid token." });
         req.user = user;
-        next(); // Token is good, proceed to the route!
+        next();
     });
 };
 
-// 📡 API 1: GET ALL PLOTS (Public)
-app.get('/api/plots', (req, res) => {
-    fs.readFile(plotsFilePath, 'utf8', (err, data) => {
-        if (err) return res.status(500).json({ error: "Database error" });
-        res.json(JSON.parse(data));
-    });
-});
-
-// 🔐 API 2: ADMIN LOGIN
+// 🔐 API: SMART LOGIN
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
-        const token = jwt.sign({ role: 'admin' }, SECRET_KEY, { expiresIn: '24h' });
-        res.json({ success: true, token: token });
+    const user = USERS.find(u => u.username === username && u.password === password);
+    
+    if (user) {
+        const token = jwt.sign({ username: user.username, role: user.role, plotId: user.plotId }, SECRET_KEY, { expiresIn: '24h' });
+        res.json({ success: true, token: token, role: user.role, plotId: user.plotId });
     } else {
         res.status(401).json({ success: false, message: "Invalid credentials" });
     }
 });
 
-// ✍️ API 3: ADD NEW PLOT (Secured by Token)
-app.post('/api/plots', authenticateToken, (req, res) => {
-    const newPlot = req.body;
+// 📡 API: GET ALL PLOTS FROM SUPABASE
+app.get('/api/plots', async (req, res) => {
+    const { data, error } = await supabase.from('plots').select('*');
+    if (error) return res.status(500).json({ error: "Supabase Error" });
+    res.json(data);
+});
 
-    fs.readFile(plotsFilePath, 'utf8', (err, data) => {
-        if (err) return res.status(500).json({ error: "Database read error" });
+// ✍️ API: ADD NEW PLOT (ADMIN ONLY)
+app.post('/api/plots', authenticateToken, async (req, res) => {
+    if (req.user.role !== 'admin') return res.status(403).json({ error: "Only Admins can add plots." });
+
+    const { data, error } = await supabase
+        .from('plots')
+        .insert([{ id: req.body.id, name: req.body.name, lat: req.body.lat, lng: req.body.lng }])
+        .select();
+
+    if (error) {
+        if (error.code === '23505') return res.status(400).json({ error: "This Plot ID already exists!" });
+        return res.status(500).json({ error: "Failed to save to Supabase." });
+    }
+    
+    res.status(201).json({ success: true, message: "Plot added!", plot: data[0] });
+});
+
+// 🚀 API: BULK UPLOAD CSV DATA (ADMIN ONLY)
+app.post('/api/plots/bulk', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'admin') return res.status(403).json({ error: "Only Admins can upload CSVs." });
+
+        const plotsArray = req.body.plots;
+        if (!plotsArray || plotsArray.length === 0) return res.status(400).json({ error: "CSV is empty or unreadable." });
+
+        const { data, error } = await supabase
+            .from('plots')
+            .insert(plotsArray)
+            .select();
+
+        if (error) {
+            console.error("Supabase Error:", error); 
+            if (error.code === '23505') return res.status(400).json({ error: "CSV contains Plot IDs that already exist!" });
+            return res.status(500).json({ error: "Supabase rejected the data." });
+        }
         
-        let plots = JSON.parse(data);
-        plots.push(newPlot); // Add the new plot to the array
-
-        // Write the new array back to the JSON file permanently
-        fs.writeFile(plotsFilePath, JSON.stringify(plots, null, 2), (writeErr) => {
-            if (writeErr) return res.status(500).json({ error: "Database write error" });
-            res.status(201).json({ success: true, message: "Plot added successfully!", plot: newPlot });
-        });
-    });
+        res.status(201).json({ success: true, message: `${data.length} plots added instantly!`, plots: data });
+    } catch (err) {
+        console.error("Server Crash:", err);
+        res.status(500).json({ error: "Fatal server error during upload." });
+    }
 });
 
-app.listen(PORT, () => {
-    console.log(`🚀 Secure Society Backend running on http://localhost:${PORT}`);
+// 🏠 API: RENAME EXISTING PLOT
+app.put('/api/plots/:id', authenticateToken, async (req, res) => {
+    const targetPlotId = req.params.id;
+    const { name } = req.body;
+
+    if (req.user.role === 'resident' && req.user.plotId !== targetPlotId) {
+        return res.status(403).json({ error: "Security Alert: You can only edit your own property." });
+    }
+
+    const { data, error } = await supabase
+        .from('plots')
+        .update({ name: name })
+        .eq('id', targetPlotId)
+        .select();
+
+    if (error || data.length === 0) return res.status(404).json({ error: "Plot not found or failed to update." });
+    
+    res.json({ success: true, message: "House name updated!", plot: data[0] });
 });
+
+app.listen(PORT, () => { console.log(`🚀 Supabase Backend running on port ${PORT}`); });

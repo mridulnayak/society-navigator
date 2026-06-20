@@ -1,12 +1,12 @@
 import React from 'react';
 import { Search, MapPin, Route, Compass, Volume2, VolumeX, Lock, Unlock, Home, Share2, LogOut, Languages } from 'lucide-react';
-import { T } from '../../../utils/translations'; // 📖 Import Dictionary
+import { T } from '../../../utils/translations'; 
 
 export default function SearchDashboard({
   isDbLoaded, isLoggedIn, userRole, userPlotId,
   voiceEnabled, setVoiceEnabled,
-  language, setLanguage, // 🌐 NEW PROPS
-  handleLogout, setShowLoginModal,
+  language, setLanguage, 
+  handleLogout, setShowLoginModal, setShowBulkUpload, // 🌐 ADDED setShowBulkUpload HERE
   handleUpdateHouseName, editHouseName, setEditHouseName,
   searchQuery, handleInputChange, targetLocation,
   isNavigating, setIsNavigating, setTargetLocation, setSearchQuery,
@@ -14,7 +14,7 @@ export default function SearchDashboard({
   suggestions, handleSelectSuggestion
 }) {
   
-  const text = T[language]; // Automatically load English or Hindi
+  const text = T[language]; 
 
   return (
     <div className="absolute top-4 left-1/2 -translate-x-1/2 w-[92%] sm:w-full sm:max-w-md z-[9999] flex flex-col gap-1.5 pointer-events-none">
@@ -43,7 +43,18 @@ export default function SearchDashboard({
         </div>
 
         {/* ROLE-BASED BANNERS */}
-        {isLoggedIn && userRole === 'admin' && (<div className="w-full bg-emerald-500/10 border border-emerald-500/30 rounded-lg py-1.5 mb-3 flex items-center justify-center animate-pulse"><span className="text-[10px] font-black text-emerald-400 tracking-widest">{text.adminBanner}</span></div>)}
+        {isLoggedIn && userRole === 'admin' && (
+            <div className="flex flex-col gap-2 mb-3">
+                <div className="w-full bg-emerald-500/10 border border-emerald-500/30 rounded-lg py-1.5 flex items-center justify-center animate-pulse">
+                    <span className="text-[10px] font-black text-emerald-400 tracking-widest">{text.adminBanner}</span>
+                </div>
+                {/* 📤 NEW BULK UPLOAD BUTTON */}
+                <button type="button" onClick={() => setShowBulkUpload(true)} className="w-full bg-blue-500/10 border border-blue-500/30 rounded-lg py-2 text-xs font-black text-blue-400 tracking-widest hover:bg-blue-500/20 transition-all flex items-center justify-center gap-2">
+                    📤 UPLOAD PLOT CSV
+                </button>
+            </div>
+        )}
+
         {isLoggedIn && userRole === 'resident' && (
             <form onSubmit={handleUpdateHouseName} className="w-full bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mb-3 flex flex-col gap-2">
                 <div className="flex items-center gap-2"><Home className="w-4 h-4 text-blue-400" /><span className="text-[10px] font-black text-blue-400 tracking-widest">{text.editResidence} {userPlotId}</span></div>
