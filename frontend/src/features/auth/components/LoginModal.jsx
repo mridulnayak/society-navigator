@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Key } from 'lucide-react';
+import { Mail, Key } from 'lucide-react'; // 📧 Swapped to Mail icon
 
 export default function LoginModal({ 
     handleLogin, 
@@ -16,8 +16,8 @@ export default function LoginModal({
             {loginError && <p className="text-red-400 text-xs text-center bg-red-500/10 py-2 rounded-lg border border-red-500/20">{loginError}</p>}
             
             <div className="relative">
-                <User className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                <input type="text" placeholder="Username (admin or b1017)" value={loginUser} onChange={(e) => setLoginUser(e.target.value)} required 
+                <Mail className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+                <input type="email" placeholder="Email Address" value={loginUser} onChange={(e) => setLoginUser(e.target.value)} required 
                        className="w-full pl-10 pr-4 py-2.5 bg-slate-950 text-white rounded-xl border border-slate-700 focus:outline-none text-sm" />
             </div>
             

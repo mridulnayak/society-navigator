@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useContext } from 'react';
 import { AppContext } from './context/AppContext'; 
 import { T } from './utils/translations';
+import { Map } from 'lucide-react'; 
 
 // 🏗️ ENTERPRISE IMPORTS (Components)
 import BulkUploadModal from './features/admin/components/BulkUploadModal';
 import LoginModal from './features/auth/components/LoginModal';
-import AddPlotModal from './features/admin/components/AddPlotModal';
 import SearchDashboard from './features/visitor/components/SearchDashboard';
 import MapCanvas from './features/map/components/MapCanvas';
+import ProvisionUserModal from './features/admin/components/ProvisionUserModal';
+import ResidentDirectoryModal from './features/admin/components/ResidentDirectoryModal';
 
 // 🏗️ ENTERPRISE IMPORTS (Hooks & Config)
 import { MAIN_GATE } from './config/constants';
@@ -29,16 +31,13 @@ export default function App() {
   // 🗄️ LOCAL UI STATE
   const [searchQuery, setSearchQuery] = useState('');
   const [suggestions, setSuggestions] = useState([]);
-  
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
+  const [showProvisionModal, setShowProvisionModal] = useState(false);
+  const [showDirectoryModal, setShowDirectoryModal] = useState(false);
   const [loginUser, setLoginUser] = useState('');
   const [loginPass, setLoginPass] = useState('');
   const [loginError, setLoginError] = useState('');
-
-  const [newPlotCoords, setNewPlotCoords] = useState(null);
-  const [newPlotId, setNewPlotId] = useState('');
-  const [newPlotName, setNewPlotName] = useState('');
   const [editHouseName, setEditHouseName] = useState('');
 
   // 🗣️ VOICE ASSISTANT
@@ -79,7 +78,7 @@ export default function App() {
     try {
         const res = await fetch('http://localhost:5000/api/login', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: loginUser, password: loginPass })
+            body: JSON.stringify({ email: loginUser, password: loginPass })
         });
         const data = await res.json();
         if (data.success) {
@@ -104,27 +103,9 @@ export default function App() {
   const handleLogout = () => { 
     localStorage.clear(); 
     setIsLoggedIn(false); setUserRole(null); setUserPlotId(null); 
-    setNewPlotCoords(null); 
   };
 
   // ✍️ DB WRITE METHODS
-  const handleSaveNewPlot = async (e) => {
-      e.preventDefault();
-      try {
-          const res = await fetch('http://localhost:5000/api/plots', {
-              method: 'POST', 
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('society_token')}` },
-              body: JSON.stringify({ id: newPlotId.toUpperCase(), name: newPlotName, lat: newPlotCoords.lat, lng: newPlotCoords.lng })
-          });
-          const data = await res.json();
-          if (data.success) {
-              setPlotDatabase([...plotDatabase, data.plot]); 
-              setNewPlotCoords(null); setNewPlotId(''); setNewPlotName(''); 
-              speak('speechPlotAdded');
-          } else alert(data.error || "Failed to save plot.");
-      } catch (err) { alert("Server connection failed."); }
-  };
-
   const handleUpdateHouseName = async (e) => {
       e.preventDefault();
       try {
@@ -181,16 +162,7 @@ export default function App() {
         />
       )}
 
-      {newPlotCoords && isLoggedIn && userRole === 'admin' && (
-        <AddPlotModal 
-            handleSaveNewPlot={handleSaveNewPlot} 
-            newPlotCoords={newPlotCoords} setNewPlotCoords={setNewPlotCoords} 
-            newPlotId={newPlotId} setNewPlotId={setNewPlotId} 
-            newPlotName={newPlotName} setNewPlotName={setNewPlotName} 
-        />
-      )}
-
-      {/* 📤 RENDER THE NEW BULK UPLOAD MODAL */}
+      {/* 📤 RENDER THE BULK UPLOAD MODAL */}
       {showBulkUpload && isLoggedIn && userRole === 'admin' && (
         <BulkUploadModal 
             setShowBulkUpload={setShowBulkUpload} 
@@ -199,12 +171,30 @@ export default function App() {
         />
       )}
 
+      {/* ➕ ADD THIS RIGHT HERE: THE NEW PROVISION MODAL */}
+      {showProvisionModal && isLoggedIn && userRole === 'admin' && (
+        <ProvisionUserModal 
+            setShowProvisionModal={setShowProvisionModal} 
+            plotDatabase={plotDatabase} 
+        />
+      )}
+
+      {/* 🗄️ NEW DIRECTORY MODAL */}
+      {showDirectoryModal && isLoggedIn && userRole === 'admin' && (
+        <ResidentDirectoryModal 
+            setShowDirectoryModal={setShowDirectoryModal} 
+        />
+      )}
+
+      {/* 🎛️ UPDATE THIS COMPONENT: SEARCH DASHBOARD */}
       <SearchDashboard 
           language={language} setLanguage={setLanguage}
           isDbLoaded={isDbLoaded} isLoggedIn={isLoggedIn} userRole={userRole} userPlotId={userPlotId}
           voiceEnabled={voiceEnabled} setVoiceEnabled={setVoiceEnabled}
           handleLogout={handleLogout} setShowLoginModal={setShowLoginModal} 
-          setShowBulkUpload={setShowBulkUpload} // 🌐 PASSED DOWN PROPS HERE
+          setShowBulkUpload={setShowBulkUpload} 
+          setShowProvisionModal={setShowProvisionModal} 
+          setShowDirectoryModal={setShowDirectoryModal}
           handleUpdateHouseName={handleUpdateHouseName} editHouseName={editHouseName} setEditHouseName={setEditHouseName}
           searchQuery={searchQuery} handleInputChange={handleInputChange} targetLocation={targetLocation}
           isNavigating={isNavigating} setIsNavigating={setIsNavigating} setTargetLocation={setTargetLocation} setSearchQuery={setSearchQuery}
@@ -213,7 +203,7 @@ export default function App() {
       />
 
       <MapCanvas 
-          isLoggedIn={isLoggedIn} userRole={userRole} setNewPlotCoords={setNewPlotCoords}
+          isLoggedIn={isLoggedIn} userRole={userRole}
           plotDatabase={plotDatabase} targetLocation={targetLocation} userLocation={userLocation}
           isNavigating={isNavigating} speak={speak}
       />

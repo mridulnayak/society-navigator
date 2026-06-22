@@ -5,7 +5,7 @@ export const T = {
       startRoute: "START ROUTE",
       endRoute: "END ROUTE",
       takeExit: "TAKE ME TO THE EXIT",
-      adminBanner: "TAP MAP TO ADD NEW PLOT",
+      adminBanner: "ADMIN COMMAND CENTER ACTIVE", // ⬅️ Cleaned up!
       editResidence: "EDIT RESIDENCE:",
       save: "SAVE",
       cancel: "CANCEL",
@@ -16,8 +16,7 @@ export const T = {
       gpsError: "GPS Error - Check Permissions",
       speechArrived: "You have arrived at",
       speechRouteCalc: "Route calculated.",
-      speechExit: "Routing to the main gate exit.",
-      speechPlotAdded: "New plot added."
+      speechExit: "Routing to the main gate exit."
   },
   hi: {
       title: "ढेबर नेविगेटर",
@@ -25,7 +24,7 @@ export const T = {
       startRoute: "रास्ता शुरू करें",
       endRoute: "रास्ता समाप्त करें",
       takeExit: "मुझे बाहर ले चलो",
-      adminBanner: "नया घर जोड़ने के लिए मैप पर टैप करें",
+      adminBanner: "एडमिन कमांड सेंटर सक्रिय", // ⬅️ Cleaned up!
       editResidence: "घर का नाम बदलें:",
       save: "सेव करें",
       cancel: "रद्द करें",
@@ -36,7 +35,6 @@ export const T = {
       gpsError: "GPS त्रुटि - लोकेशन चालू करें",
       speechArrived: "आप पहुँच गए हैं",
       speechRouteCalc: "रास्ता मिल गया है।",
-      speechExit: "मुख्य द्वार की ओर ले जा रहे हैं।",
-      speechPlotAdded: "नया घर जुड़ गया है।"
+      speechExit: "मुख्य द्वार की ओर ले जा रहे हैं।"
   }
 };

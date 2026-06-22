@@ -1,0 +1,22 @@
+{
+  "short_name": "Navigator",
+  "name": "Dhebar Society Navigator",
+  "description": "Live GPS routing and digital gatepass system for modern societies.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#3b82f6",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/854/854878.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/854/854878.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ]
+}
