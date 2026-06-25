@@ -1,4 +1,5 @@
 import React, { createContext, useState, useEffect } from 'react';
+import { API_BASE_URL } from '../config/constants'; // ⬅️ Import dynamic URL
 
 export const AppContext = createContext();
 
@@ -25,11 +26,18 @@ export const AppProvider = ({ children }) => {
             setUserPlotId(localStorage.getItem('society_plot'));
         }
 
-        // 2. Fetch Database from Express
+        // 2. Fetch Database from Express (WITH NAMETAG)
         const fetchPlots = async () => {
             try {
                 console.log("📡 Fetching plots from backend...");
-                const res = await fetch('http://localhost:5000/api/plots');
+                
+                // ⬅️ Updated to use dynamic URL and send the Tenant ID
+                const res = await fetch(`${API_BASE_URL}/plots`, {
+                    headers: {
+                        'x-tenant-id': import.meta.env.VITE_TENANT_ID
+                    }
+                });
+                
                 const data = await res.json();
                 
                 console.log("📦 Backend Response Data:", data);

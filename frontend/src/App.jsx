@@ -75,9 +75,13 @@ export default function App() {
   // 🔐 AUTH METHODS
   const handleLogin = async (e) => {
     e.preventDefault();
-    try {
+try {
         const res = await fetch('http://localhost:5000/api/login', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            method: 'POST', 
+            headers: { 
+                'Content-Type': 'application/json',
+                'x-tenant-id': import.meta.env.VITE_TENANT_ID // ⬅️ NEW NAMETAG
+            },
             body: JSON.stringify({ email: loginUser, password: loginPass })
         });
         const data = await res.json();
@@ -108,10 +112,14 @@ export default function App() {
   // ✍️ DB WRITE METHODS
   const handleUpdateHouseName = async (e) => {
       e.preventDefault();
-      try {
+try {
           const res = await fetch(`http://localhost:5000/api/plots/${userPlotId}`, {
               method: 'PUT', 
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('society_token')}` },
+              headers: { 
+                  'Content-Type': 'application/json', 
+                  'x-tenant-id': import.meta.env.VITE_TENANT_ID, // ⬅️ NEW NAMETAG
+                  'Authorization': `Bearer ${localStorage.getItem('society_token')}` 
+              },
               body: JSON.stringify({ name: editHouseName })
           });
           const data = await res.json();

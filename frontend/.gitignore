@@ -1,3 +1,5 @@
+# Node / Vite / Frontend .gitignore
+
 # Logs
 logs
 *.log
@@ -7,18 +9,49 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+build/
+out/
+.vite/
+.parcel-cache/
+.cache/
+coverage/
+*.tgz
+
+# Environment files (explicitly included per request)
+.env
+.env.*
+.env.local
+.env.*.local
+.secrets.local
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
-.idea
+.idea/
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+Thumbs.db
+desktop.ini
+
+# OS or swap files
+*.swp
+*.swo
+
+# Misc
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# TypeScript
+*.tsbuildinfo
+
+# Optional npm cache folder
+.npm
+
+# End of frontend .gitignore

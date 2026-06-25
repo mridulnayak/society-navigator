@@ -14,9 +14,12 @@ export default function ResidentDirectoryModal({ setShowDirectoryModal }) {
     const fetchResidents = async () => {
         setIsLoading(true);
         setError('');
-        try {
+try {
             const res = await fetch('http://localhost:5000/api/users', {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('society_token')}` }
+                headers: { 
+                    'x-tenant-id': import.meta.env.VITE_TENANT_ID, // ⬅️ NEW NAMETAG
+                    'Authorization': `Bearer ${localStorage.getItem('society_token')}` 
+                }
             });
             const data = await res.json();
             
@@ -36,11 +39,13 @@ export default function ResidentDirectoryModal({ setShowDirectoryModal }) {
     const handleDelete = async (userId, userEmail) => {
         const confirmDelete = window.confirm(`Are you sure you want to permanently revoke access for ${userEmail}?`);
         if (!confirmDelete) return;
-
-        try {
+try {
             const res = await fetch(`http://localhost:5000/api/users/${userId}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('society_token')}` }
+                headers: { 
+                    'x-tenant-id': import.meta.env.VITE_TENANT_ID, // ⬅️ NEW NAMETAG
+                    'Authorization': `Bearer ${localStorage.getItem('society_token')}` 
+                }
             });
             const data = await res.json();
 

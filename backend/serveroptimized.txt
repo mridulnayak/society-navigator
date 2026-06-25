@@ -1,0 +1,562 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws');
+
+// ============================================================================
+// CONFIGURATION & INITIALIZATION
+// ============================================================================
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+const ENV = process.env.NODE_ENV || 'development';
+
+/**
+ * Tenant Configuration Registry
+ * Maps tenant IDs to their Supabase credentials
+ * Scalable: Add new tenants here without code changes
+ */
+const TENANT_CONFIG = {
+    dhebar: {
+        url: process.env.DHEBAR_SUPABASE_URL,
+        serviceKey: process.env.DHEBAR_SUPABASE_SERVICE_KEY,
+    },
+    migsejbahar: {
+        url: process.env.MIGSEJBAHAR_SUPABASE_URL,
+        serviceKey: process.env.MIGSEJBAHAR_SUPABASE_SERVICE_KEY,
+    },
+};
+
+/**
+ * Validate all required environment variables on startup
+ * Fail fast if configuration is incomplete
+ */
+const validateEnvironment = () => {
+    const requiredVars = [];
+    Object.entries(TENANT_CONFIG).forEach(([tenantId, config]) => {
+        if (!config.url) requiredVars.push(`${tenantId.toUpperCase()}_SUPABASE_URL`);
+        if (!config.serviceKey) requiredVars.push(`${tenantId.toUpperCase()}_SUPABASE_SERVICE_KEY`);
+    });
+
+    if (requiredVars.length > 0) {
+        console.error('❌ Missing environment variables:', requiredVars.join(', '));
+        process.exit(1);
+    }
+};
+
+validateEnvironment();
+
+// ============================================================================
+// MIDDLEWARE CONFIGURATION
+// ============================================================================
+
+// Security & Parsing
+app.use(cors({
+    origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
+    credentials: true,
+}));
+app.use(express.json({ limit: '10mb' }));
+
+// Request logging middleware (simple version - can integrate with Winston/Bunyan later)
+app.use((req, res, next) => {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] ${req.method} ${req.path} - Tenant: ${req.headers['x-tenant-id'] || 'default'}`);
+    next();
+});
+
+// ============================================================================
+// TENANT DATABASE MANAGEMENT
+// ============================================================================
+
+/** 
+ * Connection cache for tenant databases
+ * Prevents creating multiple connections to the same tenant
+ * Reuses connections for optimal performance
+ */
+const tenantClients = {};
+
+/**
+ * Get or create a Supabase client for the specified tenant
+ * @param {string} tenantId - The tenant identifier
+ * @returns {SupabaseClient} Supabase client instance
+ * @throws {Error} If tenant ID is not recognized
+ */
+const getTenantDb = (tenantId) => {
+    // Return cached connection if available
+    if (tenantClients[tenantId]) {
+        return tenantClients[tenantId];
+    }
+
+    const config = TENANT_CONFIG[tenantId];
+    if (!config) {
+        throw new Error(`Unrecognized tenant: ${tenantId}`);
+    }
+
+    // Create and cache new connection
+    tenantClients[tenantId] = createClient(config.url, config.serviceKey, {
+        auth: { persistSession: false },
+        realtime: { transport: WebSocket },
+    });
+
+    return tenantClients[tenantId];
+};
+
+// ============================================================================
+// ERROR HANDLING & RESPONSE UTILITIES
+// ============================================================================
+
+/**
+ * Standard error response format for consistency across all endpoints
+ * Helps frontend teams parse errors predictably
+ */
+const sendError = (res, statusCode, message, details = null) => {
+    const errorResponse = {
+        success: false,
+        error: message,
+    };
+    if (ENV === 'development' && details) {
+        errorResponse.details = details;
+    }
+    res.status(statusCode).json(errorResponse);
+};
+
+/**
+ * Standard success response format
+ */
+const sendSuccess = (res, statusCode = 200, message, data = null) => {
+    const response = {
+        success: true,
+        message,
+    };
+    if (data) {
+        response.data = data;
+    }
+    res.status(statusCode).json(response);
+};
+
+// ============================================================================
+// MIDDLEWARE: TENANT INJECTION
+// ============================================================================
+
+/**
+ * Inject tenant-specific Supabase client into every request
+ * Failure to identify tenant results in 403 Forbidden
+ */
+app.use((req, res, next) => {
+    try {
+        const tenantId = (req.headers['x-tenant-id'] || 'dhebar').toLowerCase();
+        req.tenantId = tenantId;
+        req.supabase = getTenantDb(tenantId);
+        next();
+    } catch (err) {
+        sendError(res, 403, 'Invalid tenant specified', err.message);
+    }
+});
+
+// ============================================================================
+// MIDDLEWARE: AUTHENTICATION
+// ============================================================================
+
+/**
+ * Verify JWT token with tenant's Supabase instance
+ * Extracts user metadata (role, plotId) and attaches to request
+ * Required for: admin endpoints, user-scoped operations
+ */
+const authenticateToken = async (req, res, next) => {
+    try {
+        const authHeader = req.headers['authorization'];
+        const token = authHeader && authHeader.split(' ')[1];
+
+        if (!token) {
+            return sendError(res, 401, 'Missing authorization token');
+        }
+
+        const { data: { user }, error } = await req.supabase.auth.getUser(token);
+
+        if (error || !user) {
+            return sendError(res, 403, 'Invalid or expired session token');
+        }
+
+        // Extract user metadata safely
+        req.user = {
+            id: user.id,
+            email: user.email,
+            role: user.user_metadata?.role || 'visitor',
+            plotId: user.user_metadata?.plotId || null,
+        };
+
+        next();
+    } catch (err) {
+        sendError(res, 500, 'Authentication verification failed', err.message);
+    }
+};
+
+/**
+ * Middleware: Verify user has admin role
+ * Use after authenticateToken
+ */
+const requireAdmin = (req, res, next) => {
+    if (req.user.role !== 'admin') {
+        return sendError(res, 403, 'Admin privileges required');
+    }
+    next();
+};
+
+
+// ============================================================================
+// API ENDPOINTS: AUTHENTICATION
+// ============================================================================
+
+/**
+ * POST /api/auth/login
+ * Authenticate user with email and password
+ * Returns JWT token for subsequent authenticated requests
+ */
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        // Validate input
+        if (!email || !password) {
+            return sendError(res, 400, 'Email and password required');
+        }
+
+        const { data, error } = await req.supabase.auth.signInWithPassword({
+            email: email.toLowerCase(),
+            password,
+        });
+
+        if (error) {
+            return sendError(res, 401, error.message);
+        }
+
+        sendSuccess(res, 200, 'Login successful', {
+            token: data.session.access_token,
+            refreshToken: data.session.refresh_token,
+            role: data.user.user_metadata?.role || 'visitor',
+            plotId: data.user.user_metadata?.plotId || null,
+            expiresIn: data.session.expires_in,
+        });
+    } catch (err) {
+        sendError(res, 500, 'Login processing failed', err.message);
+    }
+});
+
+// ============================================================================
+// API ENDPOINTS: USER MANAGEMENT (ADMIN ONLY)
+// ============================================================================
+
+/**
+ * POST /api/users
+ * Create new user account (admin only)
+ * Accepts: email, password, role, plotId (optional)
+ */
+app.post('/api/users', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { email, password, role, plotId } = req.body;
+
+        // Validate required fields
+        if (!email || !password || !role) {
+            return sendError(res, 400, 'Email, password, and role are required');
+        }
+
+        const { data, error } = await req.supabase.auth.admin.createUser({
+            email: email.toLowerCase(),
+            password,
+            email_confirm: true,
+            user_metadata: {
+                role,
+                plotId: plotId || null,
+            },
+        });
+
+        if (error) {
+            if (error.message.includes('already exists')) {
+                return sendError(res, 409, 'Email already registered');
+            }
+            return sendError(res, 400, error.message);
+        }
+
+        sendSuccess(res, 201, `Account created for ${email}`, {
+            userId: data.user.id,
+            email: data.user.email,
+        });
+    } catch (err) {
+        sendError(res, 500, 'Failed to create user account', err.message);
+    }
+});
+
+/**
+ * GET /api/users
+ * List all resident accounts (admin only)
+ * Query params: limit, offset (for pagination)
+ */
+app.get('/api/users', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { data, error } = await req.supabase.auth.admin.listUsers();
+
+        if (error) {
+            return sendError(res, 400, error.message);
+        }
+
+        const residents = data.users
+            .filter((u) => u.user_metadata?.role === 'resident')
+            .map((user) => ({
+                id: user.id,
+                email: user.email,
+                plotId: user.user_metadata?.plotId || null,
+                createdAt: user.created_at,
+                lastSignIn: user.last_sign_in_at || null,
+            }));
+
+        sendSuccess(res, 200, `Retrieved ${residents.length} resident accounts`, {
+            count: residents.length,
+            residents,
+        });
+    } catch (err) {
+        sendError(res, 500, 'Failed to fetch user directory', err.message);
+    }
+});
+
+/**
+ * DELETE /api/users/:id
+ * Revoke access / delete resident account (admin only)
+ */
+app.delete('/api/users/:id', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (!id) {
+            return sendError(res, 400, 'User ID required');
+        }
+
+        const { error } = await req.supabase.auth.admin.deleteUser(id);
+
+        if (error) {
+            if (error.message.includes('not found')) {
+                return sendError(res, 404, 'User not found');
+            }
+            return sendError(res, 400, error.message);
+        }
+
+        sendSuccess(res, 200, 'User account revoked successfully');
+    } catch (err) {
+        sendError(res, 500, 'Failed to delete user account', err.message);
+    }
+});
+
+// ============================================================================
+// API ENDPOINTS: PLOT MANAGEMENT
+// ============================================================================
+
+/**
+ * GET /api/plots
+ * Retrieve all plots for the current tenant
+ * Public endpoint (no authentication required)
+ */
+app.get('/api/plots', async (req, res) => {
+    try {
+        const { data, error } = await req.supabase.from('plots').select('*');
+
+        if (error) {
+            return sendError(res, 500, 'Database query failed', error.message);
+        }
+
+        sendSuccess(res, 200, `Retrieved ${data.length} plots`, {
+            count: data.length,
+            plots: data,
+        });
+    } catch (err) {
+        sendError(res, 500, 'Failed to fetch plots', err.message);
+    }
+});
+
+/**
+ * POST /api/plots
+ * Add new plot (admin only)
+ * Body: { id, name, lat, lng }
+ */
+app.post('/api/plots', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { id, name, lat, lng } = req.body;
+
+        // Validate required fields
+        if (!id || !name || typeof lat !== 'number' || typeof lng !== 'number') {
+            return sendError(res, 400, 'Plot id, name, latitude, and longitude are required');
+        }
+
+        const { data, error } = await req.supabase
+            .from('plots')
+            .insert([{ id, name, lat, lng }])
+            .select();
+
+        if (error) {
+            if (error.code === '23505') {
+                return sendError(res, 409, `Plot ID '${id}' already exists`);
+            }
+            return sendError(res, 400, error.message);
+        }
+
+        sendSuccess(res, 201, 'Plot created successfully', {
+            plot: data[0],
+        });
+    } catch (err) {
+        sendError(res, 500, 'Failed to create plot', err.message);
+    }
+});
+
+/**
+ * POST /api/plots/bulk
+ * Bulk upload plots from CSV (admin only)
+ * Body: { plots: [{ id, name, lat, lng }, ...] }
+ */
+app.post('/api/plots/bulk', authenticateToken, requireAdmin, async (req, res) => {
+    try {
+        const { plots } = req.body;
+
+        if (!Array.isArray(plots) || plots.length === 0) {
+            return sendError(res, 400, 'Plots array is required and cannot be empty');
+        }
+
+        // Validate each plot object
+        for (const plot of plots) {
+            if (!plot.id || !plot.name || typeof plot.lat !== 'number' || typeof plot.lng !== 'number') {
+                return sendError(res, 400, 'Each plot must have: id, name, lat (number), lng (number)');
+            }
+        }
+
+        const { data, error } = await req.supabase
+            .from('plots')
+            .insert(plots)
+            .select();
+
+        if (error) {
+            if (error.code === '23505') {
+                return sendError(res, 409, 'CSV contains duplicate or existing Plot IDs');
+            }
+            return sendError(res, 400, error.message);
+        }
+
+        sendSuccess(res, 201, `${data.length} plots created successfully`, {
+            count: data.length,
+            plots: data,
+        });
+    } catch (err) {
+        sendError(res, 500, 'Bulk upload failed', err.message);
+    }
+});
+
+/**
+ * PUT /api/plots/:id
+ * Update plot name
+ * Authorization: Admin OR resident owning the plot
+ */
+app.put('/api/plots/:id', authenticateToken, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name } = req.body;
+
+        if (!name || typeof name !== 'string') {
+            return sendError(res, 400, 'Plot name is required and must be a string');
+        }
+
+        // Authorization: Only admins or the resident who owns this plot
+        if (req.user.role === 'resident' && req.user.plotId !== id) {
+            return sendError(res, 403, 'You do not have permission to modify this plot');
+        }
+
+        const { data, error } = await req.supabase
+            .from('plots')
+            .update({ name })
+            .eq('id', id)
+            .select();
+
+        if (error) {
+            return sendError(res, 400, error.message);
+        }
+
+        if (data.length === 0) {
+            return sendError(res, 404, `Plot ID '${id}' not found`);
+        }
+
+        sendSuccess(res, 200, 'Plot updated successfully', {
+            plot: data[0],
+        });
+    } catch (err) {
+        sendError(res, 500, 'Failed to update plot', err.message);
+    }
+});
+
+// ============================================================================
+// HEALTH CHECK & MONITORING
+// ============================================================================
+
+/**
+ * GET /health
+ * Simple health check endpoint for load balancers and monitoring
+ */
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        environment: ENV,
+    });
+});
+
+// ============================================================================
+// ERROR HANDLING & SERVER STARTUP
+// ============================================================================
+
+/**
+ * 404 handler for undefined routes
+ */
+app.use((req, res) => {
+    sendError(res, 404, `Route not found: ${req.method} ${req.path}`);
+});
+
+/**
+ * Global error handler
+ */
+app.use((err, req, res, next) => {
+    console.error('❌ Unhandled error:', err);
+    sendError(res, 500, 'Internal server error', ENV === 'development' ? err.message : undefined);
+});
+
+/**
+ * Graceful shutdown handler
+ */
+const gracefulShutdown = () => {
+    console.log('\n🛑 Shutdown signal received. Closing connections...');
+    server.close(() => {
+        console.log('✅ Server closed gracefully');
+        process.exit(0);
+    });
+    setTimeout(() => {
+        console.error('❌ Forced shutdown due to timeout');
+        process.exit(1);
+    }, 10000);
+};
+
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
+
+/**
+ * Start server
+ */
+const server = app.listen(PORT, () => {
+    const portPad = PORT.toString().padEnd(52);
+    const envPad = ENV.padEnd(45);
+    const tenantsPad = Object.keys(TENANT_CONFIG).join(', ').padEnd(42);
+    
+    console.log(`
+╔════════════════════════════════════════════════════════════╗
+║         🚀 Society Navigator Backend Server Running        ║
+║────────────────────────────────────────────────────────────║
+║ Port: ${portPad} ║
+║ Environment: ${envPad} ║
+║ Tenants: ${tenantsPad} ║
+║════════════════════════════════════════════════════════════║
+    `);
+});

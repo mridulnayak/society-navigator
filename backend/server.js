@@ -7,34 +7,69 @@ const WebSocket = require('ws');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-const supabase = createClient(
-    process.env.SUPABASE_URL, 
-    process.env.SUPABASE_SERVICE_KEY, // 🔒 service_role key grants admin authority over user accounts
-    {
-        auth: { persistSession: false }, 
-        realtime: { transport: WebSocket } 
-    }
-);
-
 // Middleware
 app.use(cors()); 
 app.use(express.json()); 
 
-// 🔒 SECURITY MIDDLEWARE (Verifies tokens directly with Supabase live auth)
+// 🧠 TENANT CACHE (Prevents memory leaks by reusing database connections)
+const tenantClients = {};
+
+// 🚦 MULTI-TENANT GATEWAY ROUTER
+const getTenantDb = (tenantId) => {
+    // Return cached connection if it already exists
+    if (tenantClients[tenantId]) return tenantClients[tenantId];
+
+    // Create new connection if it's the first time this client is requesting
+    if (tenantId === 'dhebar') {
+        tenantClients['dhebar'] = createClient(
+            process.env.DHEBAR_SUPABASE_URL, 
+            process.env.DHEBAR_SUPABASE_SERVICE_KEY, 
+            { auth: { persistSession: false }, realtime: { transport: WebSocket } }
+        );
+        return tenantClients['dhebar'];
+    }
+    
+    if (tenantId === 'migsejbahar') {
+        tenantClients['migsejbahar'] = createClient(
+            process.env.MIGSEJBAHAR_SUPABASE_URL, 
+            process.env.MIGSEJBAHAR_SUPABASE_SERVICE_KEY, 
+            { auth: { persistSession: false }, realtime: { transport: WebSocket } }
+        );
+        return tenantClients['migsejbahar'];
+    }
+
+    throw new Error("Security Alert: Unrecognized Tenant ID");
+};
+
+// 🛡️ INJECT DATABASE INTO EVERY REQUEST
+app.use((req, res, next) => {
+    try {
+        // Read the nametag from the frontend request header (default to dhebar for fallback safety)
+        const tenantId = req.headers['x-tenant-id'] || 'dhebar'; 
+        
+        // Attach the specific client's database directly to this exact API request
+        req.supabase = getTenantDb(tenantId.toLowerCase());
+        next();
+    } catch (err) {
+        res.status(403).json({ error: err.message });
+    }
+});
+
+// 🔒 SECURITY MIDDLEWARE (Verifies tokens dynamically for the specific tenant)
 const authenticateToken = async (req, res, next) => {
     try {
         const authHeader = req.headers['authorization'];
         const token = authHeader && authHeader.split(' ')[1];
         if (!token) return res.status(401).json({ error: "Access Denied. No token provided." });
 
-        // Ask Supabase to decrypt and validate the user's current token
-        const { data: { user }, error } = await supabase.auth.getUser(token);
+        // Ask the TENANT'S Supabase to decrypt and validate the token
+        const { data: { user }, error } = await req.supabase.auth.getUser(token);
         
         if (error || !user) {
             return res.status(403).json({ error: "Invalid or expired session token." });
         }
 
-        // Hydrate request object with secure metadata from database authority
+        // Hydrate request object with secure metadata
         req.user = {
             id: user.id,
             email: user.email,
@@ -52,7 +87,8 @@ app.post('/api/login', async (req, res) => {
     try {
         const { email, password } = req.body; 
 
-        const { data, error } = await supabase.auth.signInWithPassword({
+        // Uses the injected tenant database
+        const { data, error } = await req.supabase.auth.signInWithPassword({
             email: email,
             password: password
         });
@@ -80,8 +116,7 @@ app.post('/api/users/create', authenticateToken, async (req, res) => {
         const { email, password, role, plotId } = req.body;
         if (!email || !password || !role) return res.status(400).json({ error: "Missing required profile fields." });
 
-        // Execute administrative account creation (Bypasses email confirmation loops)
-        const { data, error } = await supabase.auth.admin.createUser({
+        const { data, error } = await req.supabase.auth.admin.createUser({
             email: email,
             password: password,
             email_confirm: true,
@@ -101,12 +136,11 @@ app.get('/api/users', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'admin') return res.status(403).json({ error: "Only Admins can view the directory." });
 
-        const { data, error } = await supabase.auth.admin.listUsers();
+        const { data, error } = await req.supabase.auth.admin.listUsers();
         if (error) return res.status(400).json({ error: error.message });
 
-        // Map data to only return safe fields (never send password hashes!)
         const safeUsers = data.users
-            .filter(u => u.user_metadata?.role === 'resident') // Only show residents
+            .filter(u => u.user_metadata?.role === 'resident') 
             .map(user => ({
                 id: user.id,
                 email: user.email,
@@ -126,7 +160,7 @@ app.delete('/api/users/:id', authenticateToken, async (req, res) => {
         if (req.user.role !== 'admin') return res.status(403).json({ error: "Only Admins can delete accounts." });
         
         const targetUserId = req.params.id;
-        const { error } = await supabase.auth.admin.deleteUser(targetUserId);
+        const { error } = await req.supabase.auth.admin.deleteUser(targetUserId);
         
         if (error) return res.status(400).json({ error: error.message });
         
@@ -138,7 +172,7 @@ app.delete('/api/users/:id', authenticateToken, async (req, res) => {
 
 // 📡 API: GET ALL PLOTS
 app.get('/api/plots', async (req, res) => {
-    const { data, error } = await supabase.from('plots').select('*');
+    const { data, error } = await req.supabase.from('plots').select('*');
     if (error) return res.status(500).json({ error: "Supabase Error" });
     res.json(data);
 });
@@ -147,7 +181,7 @@ app.get('/api/plots', async (req, res) => {
 app.post('/api/plots', authenticateToken, async (req, res) => {
     if (req.user.role !== 'admin') return res.status(403).json({ error: "Only Admins can add plots." });
 
-    const { data, error } = await supabase
+    const { data, error } = await req.supabase
         .from('plots')
         .insert([{ id: req.body.id, name: req.body.name, lat: req.body.lat, lng: req.body.lng }])
         .select();
@@ -168,7 +202,7 @@ app.post('/api/plots/bulk', authenticateToken, async (req, res) => {
         const plotsArray = req.body.plots;
         if (!plotsArray || plotsArray.length === 0) return res.status(400).json({ error: "CSV data array is empty." });
 
-        const { data, error } = await supabase
+        const { data, error } = await req.supabase
             .from('plots')
             .insert(plotsArray)
             .select();
@@ -193,7 +227,7 @@ app.put('/api/plots/:id', authenticateToken, async (req, res) => {
         return res.status(403).json({ error: "Security Violation: Access denied to target property." });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await req.supabase
         .from('plots')
         .update({ name: name })
         .eq('id', targetPlotId)
