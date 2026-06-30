@@ -2,8 +2,6 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AppContext } from './context/AppContext'; 
 import { T } from './utils/translations';
 import { Map } from 'lucide-react'; 
-
-// 🏗️ ENTERPRISE IMPORTS (Components)
 import BulkUploadModal from './features/admin/components/BulkUploadModal';
 import LoginModal from './features/auth/components/LoginModal';
 import SearchDashboard from './features/visitor/components/SearchDashboard';
