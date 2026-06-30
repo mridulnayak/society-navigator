@@ -3,7 +3,7 @@ import { AppContext } from './context/AppContext';
 import { T } from './utils/translations';
 import { Map } from 'lucide-react'; 
 import LoginModal from './features/auth/components/LoginModal';
-import BulkUploadModal from './features/admin/components/BulkUploadModal';
+import BulkUploadModal from "./features/admin/components/csv-upload";
 import SearchDashboard from './features/visitor/components/SearchDashboard';
 import MapCanvas from './features/map/components/MapCanvas';
 import ProvisionUserModal from './features/admin/components/ProvisionUserModal';
