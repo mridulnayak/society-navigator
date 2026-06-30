@@ -4,7 +4,6 @@ import App from './App.jsx'
 import './index.css'
 import 'leaflet/dist/leaflet.css' // 🚨 THIS WAS MISSING! FIXES THE BROKEN MAP TILES
 import { AppProvider } from './context/AppContext.jsx' 
-
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AppProvider>
