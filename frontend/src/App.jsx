@@ -2,14 +2,14 @@ import React, { useState, useEffect, useContext } from 'react';
 import { AppContext } from './context/AppContext'; 
 import { T } from './utils/translations';
 import { Map } from 'lucide-react'; 
-import BulkUploadModal from './features/admin/components/BulkUploadModal';
 import LoginModal from './features/auth/components/LoginModal';
+import BulkUploadModal from './features/admin/components/BulkUploadModal';
 import SearchDashboard from './features/visitor/components/SearchDashboard';
 import MapCanvas from './features/map/components/MapCanvas';
 import ProvisionUserModal from './features/admin/components/ProvisionUserModal';
 import ResidentDirectoryModal from './features/admin/components/ResidentDirectoryModal';
 
-// 🏗️ ENTERPRISE IMPORTS (Hooks & Config)
+// ENTERPRISE IMPORTS (Hooks & Config)
 import { MAIN_GATE } from './config/constants';
 import { useGPS } from './features/map/hooks/useGPS';
 
@@ -74,7 +74,7 @@ export default function App() {
   const handleLogin = async (e) => {
     e.preventDefault();
 try {
-        const res = await fetch('http://localhost:5000/api/login', {
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/login`, {
             method: 'POST', 
             headers: { 
                 'Content-Type': 'application/json',
@@ -111,7 +111,7 @@ try {
   const handleUpdateHouseName = async (e) => {
       e.preventDefault();
 try {
-          const res = await fetch(`http://localhost:5000/api/plots/${userPlotId}`, {
+          const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/plots/${userPlotId}`, {
               method: 'PUT', 
               headers: { 
                   'Content-Type': 'application/json', 
@@ -168,8 +168,7 @@ try {
         />
       )}
 
-      {/* 📤 RENDER THE BULK UPLOAD MODAL */}
-      {showBulkUpload && isLoggedIn && userRole === 'admin' && (
+     {showBulkUpload && isLoggedIn && userRole === 'admin' && (
         <BulkUploadModal 
             setShowBulkUpload={setShowBulkUpload} 
             setPlotDatabase={setPlotDatabase} 

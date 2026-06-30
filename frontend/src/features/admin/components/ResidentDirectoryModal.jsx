@@ -15,7 +15,7 @@ export default function ResidentDirectoryModal({ setShowDirectoryModal }) {
         setIsLoading(true);
         setError('');
 try {
-            const res = await fetch('http://localhost:5000/api/users', {
+            const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/users`, {
                 headers: { 
                     'x-tenant-id': import.meta.env.VITE_TENANT_ID, // ⬅️ NEW NAMETAG
                     'Authorization': `Bearer ${localStorage.getItem('society_token')}` 
@@ -40,7 +40,7 @@ try {
         const confirmDelete = window.confirm(`Are you sure you want to permanently revoke access for ${userEmail}?`);
         if (!confirmDelete) return;
 try {
-            const res = await fetch(`http://localhost:5000/api/users/${userId}`, {
+            const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/users/${userId}`, {
                 method: 'DELETE',
                 headers: { 
                     'x-tenant-id': import.meta.env.VITE_TENANT_ID, // ⬅️ NEW NAMETAG

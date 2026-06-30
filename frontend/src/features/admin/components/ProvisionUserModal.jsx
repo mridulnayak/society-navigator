@@ -28,7 +28,7 @@ export default function ProvisionUserModal({ setShowProvisionModal, plotDatabase
         setLoading(true);
         try {
             const token = localStorage.getItem('society_token');
-            const res = await fetch('http://localhost:5000/api/users/create', {
+           const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/users/create`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                 body: JSON.stringify({ email, password, role: 'resident', plotId })

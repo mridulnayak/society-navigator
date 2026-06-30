@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import Papa from 'papaparse';
 import { UploadCloud, FileText, AlertCircle, CheckCircle2 } from 'lucide-react';
-
 export default function BulkUploadModal({ setShowBulkUpload, setPlotDatabase, plotDatabase }) {
     const [file, setFile] = useState(null);
     const [uploading, setUploading] = useState(false);
@@ -35,7 +34,7 @@ export default function BulkUploadModal({ setShowBulkUpload, setPlotDatabase, pl
 
                 try {
                     const token = localStorage.getItem('society_token');
-                    const res = await fetch('http://localhost:5000/api/plots/bulk', {
+                    const res = await fetch(`${import.meta.env.VITE_API_BASE_URL}/plots/bulk`,{
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                         body: JSON.stringify({ plots })
