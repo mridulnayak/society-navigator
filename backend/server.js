@@ -37,7 +37,11 @@ const getTenantDb = (tenantId) => {
         );
         return tenantClients['migsejbahar'];
     }
-
+    // same if() block and return for new client
+//     if (tenantId === 'gokuldham') {
+//     tenantClients['gokuldham'] = createClient(process.env.GOKULDHAM_SUPABASE_URL, process.env.GOKULDHAM_SUPABASE_SERVICE_KEY, { auth: { persistSession: false }});
+//     return tenantClients['gokuldham'];
+// }
     throw new Error("Security Alert: Unrecognized Tenant ID");
 };
 
